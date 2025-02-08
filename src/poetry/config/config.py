@@ -168,7 +168,7 @@ class Config:
             "only-binary": None,
             "build-config-settings": {},
         },
-        "python": {"installation-dir": os.path.join("{data-dir}", "python")},
+        "python": {"installation-dir": os.path.join("{cache-dir}", "python")},
         "solver": {
             "lazy-wheel": True,
         },
