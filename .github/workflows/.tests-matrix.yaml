@@ -69,7 +69,7 @@ jobs:
         with:
           args: --with github-actions
 
-      - run: poetry run pytest --integration -v
+      - run: poetry run pytest --integration -v tests/integration
         env:
           POETRY_TEST_INTEGRATION_GIT_USERNAME: ${{ github.actor }}
           POETRY_TEST_INTEGRATION_GIT_PASSWORD: ${{ github.token }}
