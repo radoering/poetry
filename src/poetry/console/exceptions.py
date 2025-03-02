@@ -178,7 +178,7 @@ class PoetryRuntimeError(PoetryConsoleError):
         return text.rstrip(f"{indent}\n")
 
     def __str__(self) -> str:
-        return self._messages[0].stripped.strip()
+        return self.get_text(debug=True, strip=True)
 
     @classmethod
     def create(
