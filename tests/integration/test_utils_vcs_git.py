@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import uuid
 
 from copy import deepcopy
@@ -295,6 +296,14 @@ def test_system_git_fallback_on_http_401(
         "_clone",
         side_effect=HTTPUnauthorized(None, None),
     )
+    print("git longpaths")  # noqa: T201
+    result = subprocess.run(
+        ["git", "config", "core.longpaths"],
+        capture_output=True,  # Python >= 3.7 only
+        text=True,  # Python >= 3.7 only
+    )
+    print(result.stdout)  # noqa: T201
+    print(result.stderr)  # noqa: T201
 
     with Git.clone(url=source_url, branch="0.1") as repo:
         path = Path(repo.path)
