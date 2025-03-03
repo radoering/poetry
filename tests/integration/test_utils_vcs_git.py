@@ -14,6 +14,7 @@ from urllib.parse import urlunparse
 
 import pytest
 
+from dulwich.client import HTTPUnauthorized
 from dulwich.client import get_transport_and_path
 from dulwich.config import ConfigFile
 from dulwich.repo import Repo
@@ -285,6 +286,38 @@ def test_git_clone_clones_submodules_with_relative_urls_and_explicit_base(
     assert len(list(submodule_package_directory.glob("*"))) > 1
 
 
+def test_system_git_fallback_on_http_401(
+    mocker: MockerFixture,
+    source_url: str,
+    tmp_path: Path,
+) -> None:
+    spy = mocker.spy(Git, "_clone_legacy")
+    mocker.patch.object(
+        Git,
+        "_clone",
+        side_effect=HTTPUnauthorized(None, None),
+    )
+    print("git longpaths")  # noqa: T201
+    result = subprocess.run(
+        ["git", "config", "core.longpaths"],
+        capture_output=True,  # Python >= 3.7 only
+        text=True,  # Python >= 3.7 only
+    )
+    print(result.stdout)  # noqa: T201
+    print(result.stderr)  # noqa: T201
+
+    with Git.clone(url=source_url, branch="0.1", source_root=tmp_path) as repo:
+        path = Path(repo.path)
+        assert_version(repo, BRANCH_TO_REVISION_MAP["0.1"])
+
+    spy.assert_called_with(
+        url="https://github.com/python-poetry/test-fixture-vcs-repository.git",
+        target=path,
+        refspec=GitRefSpec(branch="0.1", revision=None, tag=None, ref=b"HEAD"),
+    )
+    spy.assert_called_once()
+
+
 GIT_USERNAME = os.environ.get("POETRY_TEST_INTEGRATION_GIT_USERNAME")
 GIT_PASSWORD = os.environ.get("POETRY_TEST_INTEGRATION_GIT_PASSWORD")
 HTTP_AUTH_CREDENTIALS_UNAVAILABLE = not (GIT_USERNAME and GIT_PASSWORD)
@@ -404,7 +437,7 @@ def test_system_git_called_when_configured(
         print(result.stdout)  # noqa: T201
         print(result.stderr)  # noqa: T201
 
-    with Git.clone(url=source_url, branch="0.1") as repo:
+    with Git.clone(url=source_url, branch="0.1", source_root=tmp_path) as repo:
         path = Path(repo.path)
         assert_version(repo, BRANCH_TO_REVISION_MAP["0.1"])
 
