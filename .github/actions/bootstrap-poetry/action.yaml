@@ -35,7 +35,7 @@ runs:
     - run: pipx install ${PYTHON_ARG} ${POETRY_SPEC}
       shell: bash
       env:
-        PYTHON_ARG: ${{ inputs.python-version != 'default' && format('--python "{0}"', steps.setup-python.outputs.python-path) || '' }}
+        PYTHON_ARG: ${{ inputs.python-version != 'default' && format('--python {0}', steps.setup-python.outputs.python-path) || '' }}
         POETRY_SPEC: ${{ inputs.poetry-spec }}
 
     # Enable handling long path names (+260 char) on the Windows platform
