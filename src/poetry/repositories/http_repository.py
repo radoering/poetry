@@ -359,7 +359,7 @@ class HTTPRepository(CachedRepository):
             ):
                 file_hash = f"{hash_type}:{link.hashes[hash_type]}"
 
-            files.append({"file": link.filename, "hash": file_hash})
+            files.append({"file": link.filename, "hash": file_hash, "url": link.url})
 
         data.files = files
 
