@@ -134,7 +134,7 @@ class EnvManager:
 
         The base is passed explicitly so that the interpreter is not run.
         """
-        return VirtualEnv(path, path).is_sane()
+        return GenericEnv(path, path).is_sane()
 
     def get_python_envs_file_default(self) -> Path | None:
         """
