@@ -24,7 +24,7 @@ class InvalidPythonEnvsFileEntryError(EnvError):
     def __init__(self, path: Path, envs_file: Path) -> None:
         message = (
             f"{path}, which is declared in {envs_file},"
-            " is not a virtual environment (no pyvenv.cfg found)."
+            " is not a Python environment (no Python interpreter found)."
         )
         super().__init__(message)
 

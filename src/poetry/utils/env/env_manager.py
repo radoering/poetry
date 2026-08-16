@@ -126,6 +126,16 @@ class EnvManager:
     def use_python_envs_file(self) -> bool:
         return bool(self._poetry.config.get("virtualenvs.python-envs-file", True))
 
+    @staticmethod
+    def is_python_env(path: Path) -> bool:
+        """
+        Check if a directory is a Python environment, i.e. if it provides a
+        Python interpreter. This is not restricted to virtual environments.
+
+        The base is passed explicitly so that the interpreter is not run.
+        """
+        return VirtualEnv(path, path).is_sane()
+
     def get_python_envs_file_default(self) -> Path | None:
         """
         Return the default environment declared in the ".python-envs" file,
@@ -134,21 +144,21 @@ class EnvManager:
         if not self.use_python_envs_file() or not self.python_envs_file.exists():
             return None
 
-        for venv in reversed(self.python_envs_file.read()):
-            if not venv.exists():
-                key = os.path.normcase(str(venv))
+        for env in reversed(self.python_envs_file.read()):
+            if not env.exists():
+                key = os.path.normcase(str(env))
                 if key not in self._warned_python_envs:
                     self._warned_python_envs.add(key)
                     self._io.write_error_line(
-                        f"<warning>The environment {venv}, which is declared in"
+                        f"<warning>The environment {env}, which is declared in"
                         f" {self.python_envs_file.path}, does not exist.</warning>"
                     )
                 continue
 
-            if not (venv / "pyvenv.cfg").is_file():
-                raise InvalidPythonEnvsFileEntryError(venv, self.python_envs_file.path)
+            if not self.is_python_env(env):
+                raise InvalidPythonEnvsFileEntryError(env, self.python_envs_file.path)
 
-            return venv
+            return env
 
         return None
 
@@ -162,12 +172,12 @@ class EnvManager:
 
         # An in-project ".venv" is implicitly the last entry, so it must not be
         # written. Anything that is not one of this project's virtualenvs must
-        # not be written either, so that an activated virtualenv that just
+        # not be written either, so that an activated environment that just
         # happens to be in use is not recorded as a project environment.
         if (
             venv == self.in_project_venv
             or not self.check_env_is_for_current_project(venv.name, self.base_env_name)
-            or not (venv / "pyvenv.cfg").is_file()
+            or not self.is_python_env(venv)
         ):
             return
 

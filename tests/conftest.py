@@ -412,15 +412,17 @@ def fixture_dir(fixture_base: Path) -> FixtureDirGetter:
 @pytest.fixture
 def fake_venv() -> FakeVenvBuilder:
     """
-    Create a directory that looks like a sane virtualenv, i.e. it contains a
-    "pyvenv.cfg" file (required by PEP 832) and a python executable.
+    Create a directory that looks like a sane Python environment, i.e. it
+    provides a python executable. Unless "venv" is set to False, it also
+    contains a "pyvenv.cfg" file so that it looks like a virtual environment.
 
     This is much cheaper than building a real virtualenv via ``tmp_venv``.
     """
 
-    def build(path: Path) -> Path:
+    def build(path: Path, venv: bool = True) -> Path:
         path.mkdir(parents=True, exist_ok=True)
-        (path / "pyvenv.cfg").touch()
+        if venv:
+            (path / "pyvenv.cfg").touch()
         bin_dir = path / ("Scripts" if WINDOWS else "bin")
         bin_dir.mkdir(exist_ok=True)
         python = bin_dir / ("python.exe" if WINDOWS else "python")

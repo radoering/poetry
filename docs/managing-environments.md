@@ -91,7 +91,9 @@ Poetry keeps this file up to date automatically:
 - when an environment is removed with `poetry env remove`, its entry is removed.
 
 Entries written by other tools are preserved, and Poetry can use them: if the last entry
-points to a virtual environment that Poetry did not create, Poetry will use it.
+points to an environment that Poetry did not create, Poetry will use it. Any kind of
+Python environment is accepted, not just virtual environments — a conda environment or a
+Python installation directory works just as well.
 
 An in-project `.venv` directory is implicitly the last entry, so it always takes
 precedence over the entries in `.python-envs`. Entries in `.python-envs` in turn take
@@ -103,8 +105,8 @@ Poetry deviates from PEP 832 in two ways:
 - If `virtualenvs.in-project` is set to `false`, an existing `.venv` directory is
   ignored, whereas PEP 832 makes it the implicit default unconditionally.
 - If the last entry points to a path that does not exist, Poetry writes a warning and
-  falls back to the next entry instead of erroring out. An entry that does exist but is
-  not a virtual environment is still an error.
+  falls back to the next entry instead of erroring out. An entry that does exist but
+  provides no Python interpreter is still an error.
 {{% /note %}}
 
 If you do not want Poetry to read or write the file at all, set

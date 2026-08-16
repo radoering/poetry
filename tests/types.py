@@ -155,7 +155,7 @@ class PythonEnvsFileWriter(Protocol):
 
 
 class FakeVenvBuilder(Protocol):
-    def __call__(self, path: Path) -> Path: ...
+    def __call__(self, path: Path, venv: bool = True) -> Path: ...
 
 
 class MockedPoetryPythonRegister(Protocol):

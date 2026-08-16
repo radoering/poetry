@@ -1631,7 +1631,25 @@ def test_get_falls_back_to_envs_file_if_all_entries_are_missing(
     assert manager.get().path == activated
 
 
-def test_get_raises_for_python_envs_file_entry_that_is_no_venv(
+def test_get_accepts_python_envs_file_entry_that_is_no_venv(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    """Any kind of Python environment may be declared, not just virtualenvs."""
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    # an environment without a "pyvenv.cfg" file, e.g. a conda env
+    declared = fake_venv(tmp_path / "declared", venv=False)
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == declared
+
+
+def test_get_raises_for_python_envs_file_entry_without_python(
     tmp_path: Path,
     manager: EnvManager,
     config: Config,
@@ -1640,15 +1658,15 @@ def test_get_raises_for_python_envs_file_entry_that_is_no_venv(
     os.environ.pop("VIRTUAL_ENV", None)
     config.merge({"virtualenvs": {"path": str(tmp_path)}})
 
-    not_a_venv = tmp_path / "not-a-venv"
-    not_a_venv.mkdir()
+    not_an_env = tmp_path / "not-an-env"
+    not_an_env.mkdir()
 
-    python_envs_file = write_python_envs(f"{not_a_venv}\n")
+    python_envs_file = write_python_envs(f"{not_an_env}\n")
 
     with pytest.raises(InvalidPythonEnvsFileEntryError) as e:
         manager.get()
 
-    assert str(not_a_venv) in str(e.value)
+    assert str(not_an_env) in str(e.value)
     assert str(python_envs_file.path) in str(e.value)
 
 
