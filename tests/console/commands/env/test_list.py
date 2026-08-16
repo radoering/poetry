@@ -6,6 +6,7 @@ import pytest
 import tomlkit
 
 from poetry.toml.file import TOMLFile
+from poetry.utils.env import PythonEnvsFile
 
 
 if TYPE_CHECKING:
@@ -15,7 +16,9 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
     from poetry.utils.env import MockEnv
+    from tests.helpers import PoetryTestApplication
     from tests.types import CommandTesterFactory
+    from tests.types import FakeVenvBuilder
 
 
 @pytest.fixture
@@ -76,3 +79,22 @@ def test_in_project_venv_is_false(
     tester.execute()
     expected = ""
     assert tester.io.fetch_output() == expected
+
+
+def test_env_declared_in_python_envs_file_is_activated(
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venvs_in_cache_dirs: list[str],
+    venv_cache: Path,
+    fake_venv: FakeVenvBuilder,
+) -> None:
+    declared = fake_venv(venv_cache / "declared")
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+    python_envs_file.path.write_text(f"{declared}\n", encoding="utf-8")
+
+    tester.execute()
+
+    expected = [*venvs_in_cache_dirs, f"{declared} (Activated)"]
+    assert tester.io.fetch_output().strip() == "\n".join(expected)

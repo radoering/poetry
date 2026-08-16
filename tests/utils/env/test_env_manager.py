@@ -21,6 +21,7 @@ from poetry.utils.env import GET_PYTHON_VERSION_ONELINER
 from poetry.utils.env import EnvManager
 from poetry.utils.env import IncorrectEnvError
 from poetry.utils.env.env_manager import EnvsFile
+from poetry.utils.env.exceptions import InvalidPythonEnvsFileEntryError
 from poetry.utils.env.python.exceptions import InvalidCurrentPythonVersionError
 from poetry.utils.env.python.exceptions import NoCompatiblePythonVersionFoundError
 from poetry.utils.env.python.exceptions import PythonVersionNotFoundError
@@ -37,10 +38,14 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
     from poetry.poetry import Poetry
+    from poetry.utils.env import PythonEnvsFile
+    from poetry.utils.env import VirtualEnv
     from tests.conftest import Config
+    from tests.types import FakeVenvBuilder
     from tests.types import FixtureDirGetter
     from tests.types import MockedPythonRegister
     from tests.types import ProjectFactory
+    from tests.types import PythonEnvsFileWriter
 
 VERSION_3_7_1 = Version.parse("3.7.1")
 
@@ -1444,3 +1449,542 @@ def test_create_venv_malformed_prompt_template(
     assert "Invalid template string in 'virtualenvs.prompt' setting" in str(
         exc_info.value
     )
+
+
+def test_get_prefers_python_envs_file_over_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    fake_venv(tmp_path / f"{venv_name}-py3.7")
+    declared = fake_venv(tmp_path / f"{venv_name}-py3.8")
+
+    envs_file = TOMLFile(tmp_path / "envs.toml")
+    doc = tomlkit.document()
+    doc[venv_name] = {"minor": "3.7", "patch": "3.7.0"}
+    envs_file.write(doc)
+
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == declared
+
+
+def test_get_uses_last_entry_of_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    first = fake_venv(tmp_path / "first")
+    last = fake_venv(tmp_path / "last")
+
+    write_python_envs(f"{first}\n{last}\n")
+
+    assert manager.get().path == last
+
+
+def test_get_prefers_in_project_venv_over_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    in_project_venv_dir: Path,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    declared = fake_venv(tmp_path / "declared")
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == in_project_venv_dir
+
+
+def test_get_uses_python_envs_file_if_in_project_venv_is_disabled(
+    tmp_path: Path,
+    manager: EnvManager,
+    poetry: Poetry,
+    config: Config,
+    in_project_venv_dir: Path,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    poetry.config.config["virtualenvs"]["in-project"] = False
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    declared = fake_venv(tmp_path / "declared")
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == declared
+
+
+def test_get_prefers_env_var_over_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ["VIRTUAL_ENV"] = "/environment/prefix"
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    declared = fake_venv(tmp_path / "declared")
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == Path("/environment/prefix")
+
+
+def test_get_uses_python_envs_file_even_if_venv_creation_is_disabled(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"create": False, "path": str(tmp_path)}})
+    declared = fake_venv(tmp_path / "declared")
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == declared
+
+
+def test_get_ignores_python_envs_file_if_disabled(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge(
+        {"virtualenvs": {"path": str(tmp_path), "python-envs-file": False}},
+    )
+    declared = fake_venv(tmp_path / "declared")
+    activated = fake_venv(tmp_path / f"{venv_name}-py3.7")
+
+    envs_file = TOMLFile(tmp_path / "envs.toml")
+    doc = tomlkit.document()
+    doc[venv_name] = {"minor": "3.7", "patch": "3.7.0"}
+    envs_file.write(doc)
+
+    write_python_envs(f"{declared}\n")
+
+    assert manager.get().path == activated
+
+
+def test_get_warns_and_falls_back_for_missing_python_envs_file_entry(
+    tmp_path: Path,
+    manager: EnvManager,
+    io: BufferedIO,
+    config: Config,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    existing = fake_venv(tmp_path / "existing")
+    missing = tmp_path / "missing"
+
+    write_python_envs(f"{existing}\n{missing}\n")
+
+    assert manager.get().path == existing
+
+    error = io.fetch_error()
+    assert f"The environment {missing}" in error
+    assert "does not exist" in error
+
+    # the warning is only written once per manager
+    io.clear_error()
+    assert manager.get(reload=True).path == existing
+    assert io.fetch_error() == ""
+
+
+def test_get_falls_back_to_envs_file_if_all_entries_are_missing(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    activated = fake_venv(tmp_path / f"{venv_name}-py3.7")
+
+    envs_file = TOMLFile(tmp_path / "envs.toml")
+    doc = tomlkit.document()
+    doc[venv_name] = {"minor": "3.7", "patch": "3.7.0"}
+    envs_file.write(doc)
+
+    write_python_envs(f"{tmp_path / 'missing'}\n")
+
+    assert manager.get().path == activated
+
+
+def test_get_raises_for_python_envs_file_entry_that_is_no_venv(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    not_a_venv = tmp_path / "not-a-venv"
+    not_a_venv.mkdir()
+
+    python_envs_file = write_python_envs(f"{not_a_venv}\n")
+
+    with pytest.raises(InvalidPythonEnvsFileEntryError) as e:
+        manager.get()
+
+    assert str(not_a_venv) in str(e.value)
+    assert str(python_envs_file.path) in str(e.value)
+
+
+def test_create_venv_registers_env_in_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.config["virtualenvs"]["use-poetry-python"] = True
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    mocked_python_register("3.7.1", make_system=True)
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+    mocker.patch("subprocess.check_output", side_effect=check_output_wrapper())
+
+    manager.create_venv()
+
+    expected = tmp_path / f"{venv_name}-py3.7"
+    assert python_envs_file.read() == [expected]
+
+    # a second run neither duplicates the entry nor rewrites the file
+    mtime = python_envs_file.path.stat().st_mtime_ns
+    manager.create_venv()
+    assert python_envs_file.read() == [expected]
+    assert python_envs_file.path.stat().st_mtime_ns == mtime
+
+
+def test_create_venv_recreates_deleted_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.config["virtualenvs"]["use-poetry-python"] = True
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    mocked_python_register("3.7.1", make_system=True)
+    expected = fake_venv(tmp_path / f"{venv_name}-py3.7")
+    mocker.patch(
+        "subprocess.check_output",
+        side_effect=check_output_wrapper(),
+    )
+
+    manager.create_venv()
+
+    assert python_envs_file.read() == [expected]
+
+
+def test_create_venv_does_not_register_in_project_venv(
+    tmp_path: Path,
+    manager: EnvManager,
+    poetry: Poetry,
+    config: Config,
+    mocker: MockerFixture,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    poetry.config.config["virtualenvs"]["in-project"] = True
+    config.config["virtualenvs"]["use-poetry-python"] = True
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    mocked_python_register("3.7.1", make_system=True)
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+    mocker.patch("subprocess.check_output", side_effect=check_output_wrapper())
+
+    env = manager.create_venv()
+
+    assert env.path == poetry.file.path.parent / ".venv"
+    assert not python_envs_file.exists()
+
+
+def test_create_venv_does_not_register_activated_foreign_venv(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    python_envs_file: PythonEnvsFile,
+    tmp_venv: VirtualEnv,
+) -> None:
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    os.environ["VIRTUAL_ENV"] = str(tmp_venv.path)
+
+    env = manager.create_venv()
+
+    assert env.path == tmp_venv.path
+    assert not python_envs_file.exists()
+
+
+def test_create_venv_does_not_write_python_envs_file_if_disabled(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge(
+        {"virtualenvs": {"path": str(tmp_path), "python-envs-file": False}},
+    )
+    mocked_python_register("3.7.1", make_system=True)
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+
+    manager.create_venv()
+
+    assert not python_envs_file.exists()
+
+
+def test_activate_promotes_env_in_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    mocked_python_register("3.7.1")
+
+    other = fake_venv(tmp_path / "other")
+    venv = fake_venv(tmp_path / f"{venv_name}-py3.7")
+    write_python_envs(f"{venv}\n{other}\n")
+
+    mocker.patch(
+        "subprocess.check_output",
+        side_effect=check_output_wrapper(),
+    )
+
+    manager.activate("python3.7")
+
+    assert python_envs_file.read() == [other, venv]
+
+
+def test_activate_adds_env_to_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+    mocked_python_register("3.7.1")
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+
+    manager.activate("python3.7")
+
+    assert python_envs_file.read() == [tmp_path / f"{venv_name}-py3.7"]
+
+
+def test_activate_in_project_venv_does_not_write_python_envs_file(
+    manager: EnvManager,
+    poetry: Poetry,
+    mocker: MockerFixture,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    poetry.config.config["virtualenvs"]["in-project"] = True
+    mocked_python_register("3.7.1")
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+
+    env = manager.activate("python3.7")
+
+    assert env.path == poetry.file.path.parent / ".venv"
+    assert not python_envs_file.exists()
+
+
+def test_deactivate_removes_env_from_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    other = fake_venv(tmp_path / "other")
+    venv = fake_venv(tmp_path / f"{venv_name}-py3.7")
+
+    envs_file = TOMLFile(tmp_path / "envs.toml")
+    doc = tomlkit.document()
+    doc[venv_name] = {"minor": "3.7", "patch": "3.7.0"}
+    envs_file.write(doc)
+
+    write_python_envs(f"{other}\n{venv}\n")
+
+    manager.deactivate()
+
+    assert python_envs_file.read() == [other]
+
+
+def test_deactivate_removes_env_from_python_envs_file_without_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    other = fake_venv(tmp_path / "other")
+    venv = fake_venv(tmp_path / f"{venv_name}-py3.7")
+    write_python_envs(f"{other}\n{venv}\n")
+
+    manager.deactivate()
+
+    assert python_envs_file.read() == [other]
+
+
+def test_deactivate_keeps_foreign_default_in_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    foreign = fake_venv(tmp_path / "foreign")
+    write_python_envs(f"{foreign}\n")
+
+    manager.deactivate()
+
+    assert python_envs_file.read() == [foreign]
+
+
+def test_remove_removes_env_from_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    other = fake_venv(tmp_path / "other")
+    venv = fake_venv(tmp_path / f"{venv_name}-py3.7")
+    write_python_envs(f"{other}\n{venv}\n")
+
+    mocker.patch("poetry.utils.env.EnvManager.remove_venv")
+
+    manager.remove(f"{venv_name}-py3.7")
+
+    assert python_envs_file.read() == [other]
+
+
+def test_remove_by_python_version_removes_env_from_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    mocker: MockerFixture,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    os.environ.pop("VIRTUAL_ENV", None)
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    other = fake_venv(tmp_path / "other")
+    venv = fake_venv(tmp_path / f"{venv_name}-py3.6")
+    write_python_envs(f"{other}\n{venv}\n")
+
+    mocker.patch("poetry.utils.env.EnvManager.remove_venv")
+    mocker.patch(
+        "subprocess.check_output",
+        side_effect=check_output_wrapper(Version.parse("3.6.6")),
+    )
+
+    manager.remove("3.6")
+
+    assert python_envs_file.read() == [other]
+
+
+def test_prune_python_envs_file(
+    tmp_path: Path,
+    manager: EnvManager,
+    config: Config,
+    venv_name: str,
+    python_envs_file: PythonEnvsFile,
+    fake_venv: FakeVenvBuilder,
+    write_python_envs: PythonEnvsFileWriter,
+) -> None:
+    config.merge({"virtualenvs": {"path": str(tmp_path)}})
+
+    other = fake_venv(tmp_path / "other")
+    venv_36 = fake_venv(tmp_path / f"{venv_name}-py3.6")
+    venv_37 = fake_venv(tmp_path / f"{venv_name}-py3.7")
+    write_python_envs(f"{venv_36}\n{other}\n{venv_37}\n")
+
+    manager.prune_python_envs_file()
+
+    assert python_envs_file.read() == [other]

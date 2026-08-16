@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from poetry.poetry import Poetry
     from poetry.utils.env.base_env import PythonVersion
     from tests.types import CommandFactory
+    from tests.types import FakeVenvBuilder
     from tests.types import FixtureCopier
     from tests.types import FixtureDirGetter
     from tests.types import MockedPoetryPythonRegister
@@ -406,6 +407,30 @@ def fixture_dir(fixture_base: Path) -> FixtureDirGetter:
         return fixture_base / name
 
     return _fixture_dir
+
+
+@pytest.fixture
+def fake_venv() -> FakeVenvBuilder:
+    """
+    Create a directory that looks like a sane virtualenv, i.e. it contains a
+    "pyvenv.cfg" file (required by PEP 832) and a python executable.
+
+    This is much cheaper than building a real virtualenv via ``tmp_venv``.
+    """
+
+    def build(path: Path) -> Path:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "pyvenv.cfg").touch()
+        bin_dir = path / ("Scripts" if WINDOWS else "bin")
+        bin_dir.mkdir(exist_ok=True)
+        python = bin_dir / ("python.exe" if WINDOWS else "python")
+        if WINDOWS:
+            shutil.copy(sys.executable, python)
+        else:
+            python.symlink_to(sys.executable)
+        return path
+
+    return build
 
 
 @pytest.fixture

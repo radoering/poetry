@@ -64,6 +64,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = "{cache-dir}/virtualenvs"  # /path/to/cache/directory/virtualenvs
 virtualenvs.prompt = "{project_name}-py{python_version}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 ```
 
@@ -621,6 +622,23 @@ This setting controls the global virtual environment storage path. It most likel
 
 Format string defining the prompt to be displayed when the virtual environment is activated.
 The variables `project_name` and `python_version` are available for formatting.
+
+### `virtualenvs.python-envs-file`
+
+**Type**: `boolean`
+
+**Default**: `true`
+
+**Environment Variable**: `POETRY_VIRTUALENVS_PYTHON_ENVS_FILE`
+
+*Introduced in 2.5.0*
+
+If set to `true`, Poetry reads and writes the [PEP 832](https://peps.python.org/pep-0832/)
+`.python-envs` file in the project directory. Set it to `false` to make Poetry ignore
+the file completely and neither read nor write it.
+
+See [Managing environments]({{< relref "managing-environments#the-python-envs-file" >}})
+for more information.
 
 ### `virtualenvs.use-poetry-python`
 

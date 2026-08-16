@@ -25,11 +25,13 @@ from poetry.utils._compat import WINDOWS
 from poetry.utils._compat import encode
 from poetry.utils.env.exceptions import EnvCommandError
 from poetry.utils.env.exceptions import IncorrectEnvError
+from poetry.utils.env.exceptions import InvalidPythonEnvsFileEntryError
 from poetry.utils.env.generic_env import GenericEnv
 from poetry.utils.env.python import Python
 from poetry.utils.env.python.exceptions import InvalidCurrentPythonVersionError
 from poetry.utils.env.python.exceptions import NoCompatiblePythonVersionFoundError
 from poetry.utils.env.python.exceptions import PythonVersionNotFoundError
+from poetry.utils.env.python_envs_file import PythonEnvsFile
 from poetry.utils.env.script_strings import GET_ENV_PATH_ONELINER
 from poetry.utils.env.script_strings import GET_PYTHON_VERSION_ONELINER
 from poetry.utils.env.system_env import SystemEnv
@@ -95,6 +97,9 @@ class EnvManager:
     def __init__(self, poetry: Poetry, io: None | IO = None) -> None:
         self._poetry = poetry
         self._io = io or NullIO()
+        # get() may be called several times per command,
+        # so we keep track of the warnings we already wrote
+        self._warned_python_envs: set[str] = set()
 
     @property
     def in_project_venv(self) -> Path:
@@ -106,11 +111,89 @@ class EnvManager:
         return EnvsFile(self._poetry.config.virtualenvs_path / self.ENVS_FILE)
 
     @cached_property
+    def python_envs_file(self) -> PythonEnvsFile:
+        return PythonEnvsFile(
+            self._poetry.file.path.parent / PythonEnvsFile.FILENAME,
+        )
+
+    @cached_property
     def base_env_name(self) -> str:
         return self.generate_env_name(
             self._poetry.package.name,
             str(self._poetry.file.path.parent),
         )
+
+    def use_python_envs_file(self) -> bool:
+        return bool(self._poetry.config.get("virtualenvs.python-envs-file", True))
+
+    def get_python_envs_file_default(self) -> Path | None:
+        """
+        Return the default environment declared in the ".python-envs" file,
+        i.e. the last entry that we can use, or None if there is no such entry.
+        """
+        if not self.use_python_envs_file() or not self.python_envs_file.exists():
+            return None
+
+        for venv in reversed(self.python_envs_file.read()):
+            if not venv.exists():
+                key = os.path.normcase(str(venv))
+                if key not in self._warned_python_envs:
+                    self._warned_python_envs.add(key)
+                    self._io.write_error_line(
+                        f"<warning>The environment {venv}, which is declared in"
+                        f" {self.python_envs_file.path}, does not exist.</warning>"
+                    )
+                continue
+
+            if not (venv / "pyvenv.cfg").is_file():
+                raise InvalidPythonEnvsFileEntryError(venv, self.python_envs_file.path)
+
+            return venv
+
+        return None
+
+    def _register_env(self, venv: Path, *, promote: bool = False) -> None:
+        """
+        Add an environment to the ".python-envs" file, making it the default
+        one if "promote" is set.
+        """
+        if not self.use_python_envs_file():
+            return
+
+        # An in-project ".venv" is implicitly the last entry, so it must not be
+        # written. Anything that is not one of this project's virtualenvs must
+        # not be written either, so that an activated virtualenv that just
+        # happens to be in use is not recorded as a project environment.
+        if (
+            venv == self.in_project_venv
+            or not self.check_env_is_for_current_project(venv.name, self.base_env_name)
+            or not (venv / "pyvenv.cfg").is_file()
+        ):
+            return
+
+        try:
+            if promote:
+                self.python_envs_file.promote(venv)
+            else:
+                self.python_envs_file.add(venv)
+        except OSError as e:
+            self._io.write_error_line(
+                f"<warning>Could not update {self.python_envs_file.path}: {e}</warning>"
+            )
+
+    def _unregister_env(self, venv: Path) -> None:
+        """
+        Remove an environment from the ".python-envs" file.
+        """
+        if not self.use_python_envs_file():
+            return
+
+        try:
+            self.python_envs_file.remove(venv)
+        except OSError as e:
+            self._io.write_error_line(
+                f"<warning>Could not update {self.python_envs_file.path}: {e}</warning>"
+            )
 
     def activate(self, python: str) -> Env:
         venv_path = self._poetry.config.virtualenvs_path
@@ -179,16 +262,29 @@ class EnvManager:
             "patch": python_instance.patch_version.to_string(),
         }
         self.envs_file.write(envs)
+        self._register_env(venv, promote=True)
 
         return self.get(reload=True)
 
     def deactivate(self) -> None:
         venv_path = self._poetry.config.virtualenvs_path
 
+        venv: Path | None = None
         if self.envs_file.exists() and (
             minor := self.envs_file.remove_section(self.base_env_name)
         ):
             venv = venv_path / f"{self.base_env_name}-py{minor}"
+        elif (
+            declared_venv := self.get_python_envs_file_default()
+        ) is not None and self.check_env_is_for_current_project(
+            declared_venv.name, self.base_env_name
+        ):
+            # The environment has not been activated via the envs file,
+            # but it is the default one according to the ".python-envs" file.
+            venv = declared_venv
+
+        if venv is not None:
+            self._unregister_env(venv)
             self._io.write_error_line(
                 f"Deactivating virtualenv: <comment>{venv}</comment>"
             )
@@ -224,6 +320,11 @@ class EnvManager:
                 venv = self.in_project_venv
 
                 return VirtualEnv(venv)
+
+            # An environment declared in the ".python-envs" file (PEP 832)
+            # takes precedence over the one recorded in the envs file.
+            if (declared_venv := self.get_python_envs_file_default()) is not None:
+                return VirtualEnv(declared_venv)
 
             create_venv = self._poetry.config.get("virtualenvs.create", True)
 
@@ -301,7 +402,7 @@ class EnvManager:
                         venv_minor = ".".join(str(v) for v in venv.version_info[:2])
                         self.envs_file.remove_section(self.base_env_name, venv_minor)
 
-                    self.remove_venv(venv.path)
+                    self.delete_venv(venv.path)
 
                     return venv
 
@@ -345,9 +446,29 @@ class EnvManager:
         if self.envs_file.exists():
             self.envs_file.remove_section(self.base_env_name, minor)
 
-        self.remove_venv(venv_path)
+        self.delete_venv(venv_path)
 
         return VirtualEnv(venv_path, venv_path)
+
+    def delete_venv(self, path: Path) -> None:
+        """
+        Remove a virtualenv and its entry in the ".python-envs" file.
+        """
+        self.remove_venv(path)
+        self._unregister_env(path)
+
+    def prune_python_envs_file(self) -> None:
+        """
+        Remove all entries of this project from the ".python-envs" file.
+        """
+        if not self.use_python_envs_file():
+            return
+
+        self.python_envs_file.remove_matching(
+            lambda path: self.check_env_is_for_current_project(
+                path.name, self.base_env_name
+            )
+        )
 
     def use_in_project_venv(self) -> bool:
         in_project: bool | None = self._poetry.config.get("virtualenvs.in-project")
@@ -397,6 +518,11 @@ class EnvManager:
                         " virtualenv creation is disabled."
                     ),
                 )
+
+            # The environment already exists, but it may not be recorded yet,
+            # e.g. because the ".python-envs" file has been deleted.
+            self._register_env(env.path)
+
             return env
 
         in_project_venv = self.use_in_project_venv()
@@ -504,6 +630,8 @@ class EnvManager:
                 flags=self._poetry.config.get("virtualenvs.options"),
                 prompt=venv_prompt,
             )
+
+        self._register_env(venv)
 
         # venv detection:
         # stdlib venv may symlink sys.executable, so we can't use realpath.

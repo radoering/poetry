@@ -23,10 +23,11 @@ class EnvListCommand(Command):
     def handle(self) -> int:
         from poetry.utils.env import EnvManager
 
-        manager = EnvManager(self.poetry)
+        manager = EnvManager(self.poetry, io=self.io)
         current_env = manager.get()
 
-        for venv in manager.list():
+        envs = manager.list()
+        for venv in envs:
             name = venv.path.name
             if self.option("full-path"):
                 name = str(venv.path)
@@ -37,5 +38,12 @@ class EnvListCommand(Command):
                 continue
 
             self.line(name)
+
+        if current_env not in envs and current_env.path == (
+            manager.get_python_envs_file_default()
+        ):
+            # The current environment is declared in the ".python-envs" file
+            # but not managed by Poetry, so it is not part of the list above.
+            self.line(f"<info>{current_env.path} (Activated)</info>")
 
         return 0

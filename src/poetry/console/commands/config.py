@@ -87,6 +87,7 @@ To remove a repository (repo is a short alias for repositories):
             ),
             "virtualenvs.options.no-pip": (boolean_validator, boolean_normalizer),
             "virtualenvs.path": (str, lambda val: str(Path(val))),
+            "virtualenvs.python-envs-file": (boolean_validator, boolean_normalizer),
             "virtualenvs.use-poetry-python": (boolean_validator, boolean_normalizer),
             "virtualenvs.prompt": (str, str),
             "system-git-client": (boolean_validator, boolean_normalizer),

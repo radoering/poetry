@@ -6,6 +6,7 @@ import pytest
 
 from poetry.core.constraints.version import Version
 
+from poetry.utils.env import PythonEnvsFile
 from tests.console.commands.env.helpers import check_output_wrapper
 
 
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from cleo.testers.command_tester import CommandTester
     from pytest_mock import MockerFixture
 
+    from tests.helpers import PoetryTestApplication
     from tests.types import CommandTesterFactory
 
 
@@ -166,3 +168,64 @@ def test_remove_in_project_all(
 
     expected = f"Deleted virtualenv: {venvs_in_project_dir}\n"
     assert tester.io.fetch_output() == expected
+
+
+def test_remove_updates_python_envs_file(
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venvs_in_cache_dirs: list[str],
+    venv_name: str,
+    venv_cache: Path,
+) -> None:
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+    foreign = venv_cache / "foreign"
+    python_envs_file.path.write_text(
+        "".join(f"{venv_cache / name}\n" for name in venvs_in_cache_dirs)
+        + f"{foreign}\n",
+        encoding="utf-8",
+    )
+
+    tester.execute(venvs_in_cache_dirs[0])
+
+    assert python_envs_file.read() == [
+        venv_cache / venvs_in_cache_dirs[1],
+        foreign,
+    ]
+
+
+def test_remove_all_prunes_python_envs_file(
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venvs_in_cache_dirs: list[str],
+    venv_name: str,
+    venv_cache: Path,
+) -> None:
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+    foreign = venv_cache / "foreign"
+    python_envs_file.path.write_text(
+        "".join(f"{venv_cache / name}\n" for name in venvs_in_cache_dirs)
+        + f"{foreign}\n",
+        encoding="utf-8",
+    )
+
+    tester.execute("--all")
+
+    assert python_envs_file.read() == [foreign]
+
+
+def test_remove_in_project_does_not_write_python_envs_file(
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venvs_in_project_dir: Path,
+) -> None:
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+
+    tester.execute()
+
+    assert not python_envs_file.exists()

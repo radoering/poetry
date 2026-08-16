@@ -76,6 +76,41 @@ special `system` Python version to retrieve the default behavior:
 poetry env use system
 ```
 
+## The `.python-envs` file
+
+Poetry implements [PEP 832](https://peps.python.org/pep-0832/), which specifies a
+`.python-envs` file in the project directory listing the environments that can be used
+for the project, one path per line. The **last** entry is the default environment.
+
+Poetry keeps this file up to date automatically:
+
+- when a virtual environment is created, its path is appended to the file
+  (the file is created if it does not exist yet);
+- when an environment is selected with `poetry env use`, its entry is moved to the last
+  position, so that it becomes the default one;
+- when an environment is removed with `poetry env remove`, its entry is removed.
+
+Entries written by other tools are preserved, and Poetry can use them: if the last entry
+points to a virtual environment that Poetry did not create, Poetry will use it.
+
+An in-project `.venv` directory is implicitly the last entry, so it always takes
+precedence over the entries in `.python-envs`. Entries in `.python-envs` in turn take
+precedence over an environment that has been activated with `poetry env use`.
+
+{{% note %}}
+Poetry deviates from PEP 832 in two ways:
+
+- If `virtualenvs.in-project` is set to `false`, an existing `.venv` directory is
+  ignored, whereas PEP 832 makes it the implicit default unconditionally.
+- If the last entry points to a path that does not exist, Poetry writes a warning and
+  falls back to the next entry instead of erroring out. An entry that does exist but is
+  not a virtual environment is still an error.
+{{% /note %}}
+
+If you do not want Poetry to read or write the file at all, set
+[`virtualenvs.python-envs-file`]({{< relref "configuration#virtualenvspython-envs-file" >}})
+to `false`.
+
 ## Activating the environment
 
 {{% note %}}

@@ -13,6 +13,7 @@ from poetry.core.constraints.version import Version
 from poetry.console.commands.env.use import EnvUseCommand
 from poetry.toml.file import TOMLFile
 from poetry.utils.env import MockEnv
+from poetry.utils.env import PythonEnvsFile
 from poetry.utils.env.python.exceptions import NoCompatiblePythonVersionFoundError
 from tests.console.commands.env.helpers import build_venv
 from tests.console.commands.env.helpers import check_output_wrapper
@@ -25,7 +26,9 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
     from poetry.utils.env.base_env import PythonVersion
+    from tests.helpers import PoetryTestApplication
     from tests.types import CommandTesterFactory
+    from tests.types import FakeVenvBuilder
     from tests.types import MockedPythonRegister
 
 
@@ -191,3 +194,62 @@ def test_get_prefers_explicitly_activated_non_existing_virtualenvs_over_env_var(
         == f"Creating virtualenv {venv_dir.name} in {venv_dir.parent}\n"
     )
     assert tester.io.fetch_output() == f"Using virtualenv: {venv_dir}\n"
+
+
+def test_activate_writes_python_envs_file(
+    mocker: MockerFixture,
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venv_cache: Path,
+    venv_name: str,
+    venvs_in_cache_config: None,
+    fake_venv: FakeVenvBuilder,
+    mocked_python_register: MockedPythonRegister,
+    with_no_active_python: MagicMock,
+) -> None:
+    mocked_python_register("3.7.1")
+    mocked_python_register("3.8.1")
+    mocker.patch(
+        "poetry.utils.env.EnvManager.build_venv",
+        side_effect=lambda path, **__: fake_venv(Path(path)),
+    )
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+
+    tester.execute("3.7")
+    assert python_envs_file.read() == [venv_cache / f"{venv_name}-py3.7"]
+
+    tester.execute("3.8")
+    assert python_envs_file.read() == [
+        venv_cache / f"{venv_name}-py3.7",
+        venv_cache / f"{venv_name}-py3.8",
+    ]
+
+    # switching back moves the entry to the last position
+    tester.execute("3.7")
+    assert python_envs_file.read() == [
+        venv_cache / f"{venv_name}-py3.8",
+        venv_cache / f"{venv_name}-py3.7",
+    ]
+
+
+def test_use_system_removes_entry_from_python_envs_file(
+    tester: CommandTester,
+    app: PoetryTestApplication,
+    venv_cache: Path,
+    venv_name: str,
+    venvs_in_cache_config: None,
+    fake_venv: FakeVenvBuilder,
+) -> None:
+    foreign = fake_venv(venv_cache / "foreign")
+    venv = fake_venv(venv_cache / f"{venv_name}-py3.7")
+
+    python_envs_file = PythonEnvsFile(
+        app.poetry.file.path.parent / PythonEnvsFile.FILENAME
+    )
+    python_envs_file.path.write_text(f"{foreign}\n{venv}\n", encoding="utf-8")
+
+    tester.execute("system")
+
+    assert python_envs_file.read() == [foreign]

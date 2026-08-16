@@ -6,6 +6,7 @@ from poetry.utils._compat import decode
 
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from subprocess import CalledProcessError
 
 
@@ -16,6 +17,15 @@ class EnvError(Exception):
 class IncorrectEnvError(EnvError):
     def __init__(self, env_name: str) -> None:
         message = f"Env {env_name} doesn't belong to this project."
+        super().__init__(message)
+
+
+class InvalidPythonEnvsFileEntryError(EnvError):
+    def __init__(self, path: Path, envs_file: Path) -> None:
+        message = (
+            f"{path}, which is declared in {envs_file},"
+            " is not a virtual environment (no pyvenv.cfg found)."
+        )
         super().__init__(message)
 
 

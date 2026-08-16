@@ -86,6 +86,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
 
@@ -124,6 +125,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
 
@@ -183,6 +185,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
     assert config.set_config_source.call_count == 0  # type: ignore[attr-defined]
@@ -220,6 +223,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
     assert config.set_config_source.call_count == 0  # type: ignore[attr-defined]
@@ -404,6 +408,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
 
@@ -451,6 +456,7 @@ virtualenvs.options.no-pip = false
 virtualenvs.options.system-site-packages = false
 virtualenvs.path = {venv_path}  # {config_cache_dir / "virtualenvs"}
 virtualenvs.prompt = "{{project_name}}-py{{python_version}}"
+virtualenvs.python-envs-file = true
 virtualenvs.use-poetry-python = false
 """
 

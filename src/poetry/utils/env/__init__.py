@@ -13,6 +13,7 @@ from poetry.utils.env.exceptions import IncorrectEnvError
 from poetry.utils.env.generic_env import GenericEnv
 from poetry.utils.env.mock_env import MockEnv
 from poetry.utils.env.null_env import NullEnv
+from poetry.utils.env.python_envs_file import PythonEnvsFile
 from poetry.utils.env.script_strings import GET_BASE_PREFIX
 from poetry.utils.env.script_strings import GET_ENV_PATH_ONELINER
 from poetry.utils.env.script_strings import GET_ENVIRONMENT_INFO
@@ -100,6 +101,7 @@ __all__ = [
     "IncorrectEnvError",
     "MockEnv",
     "NullEnv",
+    "PythonEnvsFile",
     "SitePackages",
     "SystemEnv",
     "VirtualEnv",

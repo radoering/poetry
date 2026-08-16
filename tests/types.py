@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from poetry.poetry import Poetry
     from poetry.repositories.legacy_repository import LegacyRepository
     from poetry.utils.env import Env
+    from poetry.utils.env import PythonEnvsFile
     from poetry.utils.env.python import Python
     from tests.repositories.fixtures.distribution_hashes import DistributionHash
 
@@ -147,6 +148,14 @@ class MockedPythonRegister(Protocol):
         parent: str | Path | None = None,
         make_system: bool = False,
     ) -> Python: ...
+
+
+class PythonEnvsFileWriter(Protocol):
+    def __call__(self, content: str) -> PythonEnvsFile: ...
+
+
+class FakeVenvBuilder(Protocol):
+    def __call__(self, path: Path) -> Path: ...
 
 
 class MockedPoetryPythonRegister(Protocol):

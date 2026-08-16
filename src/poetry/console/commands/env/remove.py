@@ -48,7 +48,7 @@ class EnvRemoveCommand(Command):
         if not (pythons or remove_all_envs or is_in_project):
             self.line("No virtualenv provided.")
 
-        manager = EnvManager(self.poetry)
+        manager = EnvManager(self.poetry, io=self.io)
         # TODO: refactor env.py to allow removal with one loop
         for python in pythons:
             venv = manager.remove(python)
@@ -58,12 +58,15 @@ class EnvRemoveCommand(Command):
                 if not is_in_project or is_relative_to(
                     venv.path, self.poetry.pyproject_path.parent
                 ):
-                    manager.remove_venv(venv.path)
+                    manager.delete_venv(venv.path)
                     self.line(f"Deleted virtualenv: <comment>{venv.path}</comment>")
-            # Since we remove all the virtualenvs, we can also remove the entry
-            # in the envs file. (Strictly speaking, we should do this explicitly,
-            # in case it points to a virtualenv that had been removed manually before.)
-            if remove_all_envs and manager.envs_file.exists():
-                manager.envs_file.remove_section(manager.base_env_name)
+            # Since we remove all the virtualenvs, we can also remove the entries
+            # in the envs file and the ".python-envs" file. (Strictly speaking, we
+            # should do this explicitly, in case they point to a virtualenv that
+            # had been removed manually before.)
+            if remove_all_envs:
+                if manager.envs_file.exists():
+                    manager.envs_file.remove_section(manager.base_env_name)
+                manager.prune_python_envs_file()
 
         return 0
