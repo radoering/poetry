@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 import packaging.tags
 import pytest
 
-from deepdiff.diff import DeepDiff
 from installer.utils import SCHEME_NAMES
 
 from poetry.factory import Factory
@@ -542,14 +541,14 @@ def system_env_read_only(system_env: SystemEnv, mocker: MockerFixture) -> System
 
 
 def test_env_scheme_dict_returns_original_when_writable(system_env: SystemEnv) -> None:
-    assert not DeepDiff(system_env.scheme_dict, system_env.paths, ignore_order=True)
+    assert system_env.scheme_dict == system_env.paths
 
 
 def test_env_scheme_dict_returns_modified_when_read_only(
     system_env_read_only: SystemEnv,
 ) -> None:
     scheme_dict = system_env_read_only.scheme_dict
-    assert DeepDiff(scheme_dict, system_env_read_only.paths, ignore_order=True)
+    assert scheme_dict != system_env_read_only.paths
 
     paths = system_env_read_only.paths
     assert all(
